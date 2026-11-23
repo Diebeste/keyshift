@@ -1,0 +1,69 @@
+import { test, expect } from '@playwright/test';
+import { writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { renderProgression, C_MAJOR_PROG } from '../src/audio/synth';
+import { encodeWav } from '../src/audio/encode';
+
+const FIX = 'e2e/.fixtures';
+mkdirSync(FIX, { recursive: true });
+const wavPath = `${FIX}/c-major.wav`;
+writeFileSync(wavPath, encodeWav([renderProgression(C_MAJOR_PROG, 1.5, 44100, 2)], 44100));
+
+test('app loads, shows version, all tabs work, audio round-trip', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  const shot = (n: string) => page.screenshot({ path: `screenshots/${info.project.name}-${n}.png`, fullPage: true });
+
+  await page.goto('./');
+  await expect(page.getByTestId('version')).toContainText('Key Shift v1.0.0');
+  // Key tab: text detection of the sample sheet (G major)
+  await expect(page.getByTestId('key-results').first().locator('li').first()).toContainText('G major');
+  // Audio key detection
+  await page.getByTestId('key-file').setInputFiles(wavPath);
+  await expect(page.getByTestId('key-results').first().locator('li').first()).toContainText(/C major|A minor/, { timeout: 60000 });
+  await expect(page.getByText(/Engine: Essentia/)).toBeVisible();
+  await shot('1-key');
+
+  // Transpose tab: G → A (+2)
+  await page.getByTestId('tab-transpose').click();
+  await page.locator('#target-key').selectOption({ label: 'A major' });
+  await expect(page.getByTestId('shift-value')).toHaveText('+2');
+  await expect(page.getByTestId('transpose-summary')).toContainText('major 2nd up');
+  await expect(page.getByTestId('capo-table').locator('tbody tr')).toHaveCount(3);
+  await shot('2-transpose');
+
+  // Chords tab
+  await page.getByTestId('tab-chords').click();
+  await expect(page.getByTestId('transposed')).toContainText('E/G#');
+  await expect(page.getByTestId('transposed')).toContainText('Amazing grace');
+  await page.getByTestId('nashville').check();
+  await expect(page.getByTestId('nashville-pane')).toContainText('5/7');
+  const dl = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export .pro' }).click();
+  expect((await dl).suggestedFilename()).toMatch(/\(A\)\.pro$/);
+  await shot('3-chords');
+
+  // Audio tab: render +2, verify key moved, export MP3
+  await page.getByTestId('tab-audio').click();
+  await page.getByTestId('audio-file').setInputFiles(wavPath);
+  await expect(page.getByTestId('audio-info')).toContainText(/\d+ Hz/);
+  await expect(page.getByTestId('render')).toBeEnabled({ timeout: 60000 });
+  await page.getByTestId('render').click();
+  await expect(page.getByTestId('verify')).toContainText(/✓ Expected D major, detected D major|≈/, { timeout: 120000 });
+  await page.getByTestId('play').click();
+  await page.waitForTimeout(400);
+  await page.getByTestId('play').click();
+  const mp3 = page.waitForEvent('download');
+  await page.getByTestId('export-mp3').click();
+  const d = await mp3;
+  expect(d.suggestedFilename()).toBe('c-major (+2).mp3');
+  const p = `${FIX}/${info.project.name}-out.mp3`;
+  await d.saveAs(p);
+  expect(statSync(p).size).toBeGreaterThan(20000);
+  await shot('4-audio');
+
+  // service worker registers (offline support)
+  const sw = await page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration()));
+  expect(sw).toBe(true);
+  expect(errors.filter((e) => !/favicon|AudioContext was not allowed/.test(e))).toEqual([]);
+});

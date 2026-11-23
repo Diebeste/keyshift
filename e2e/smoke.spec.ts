@@ -1,12 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { renderProgression, C_MAJOR_PROG } from '../src/audio/synth';
-import { encodeWav } from '../src/audio/encode';
+import { encodeWav, encodeMp3 } from '../src/audio/encode';
 
 const FIX = 'e2e/.fixtures';
 mkdirSync(FIX, { recursive: true });
 const wavPath = `${FIX}/c-major.wav`;
-writeFileSync(wavPath, encodeWav([renderProgression(C_MAJOR_PROG, 1.5, 44100, 2)], 44100));
+const prog = renderProgression(C_MAJOR_PROG, 1.5, 44100, 2);
+writeFileSync(wavPath, encodeWav([prog], 44100));
+// generated test MP3 (no third-party audio needed)
+const mp3Path = `${FIX}/c-major.mp3`;
+writeFileSync(mp3Path, encodeMp3([prog, prog], 44100, 192));
 
 test('app loads, shows version, all tabs work, audio round-trip', async ({ page }, info) => {
   const errors: string[] = [];
@@ -45,11 +49,11 @@ test('app loads, shows version, all tabs work, audio round-trip', async ({ page 
 
   // Audio tab: render +2, verify key moved, export MP3
   await page.getByTestId('tab-audio').click();
-  await page.getByTestId('audio-file').setInputFiles(wavPath);
+  await page.getByTestId('audio-file').setInputFiles(mp3Path);
   await expect(page.getByTestId('audio-info')).toContainText(/\d+ Hz/);
   await expect(page.getByTestId('render')).toBeEnabled({ timeout: 60000 });
   await page.getByTestId('render').click();
-  await expect(page.getByTestId('verify')).toContainText(/✓ Expected D major, detected D major|≈/, { timeout: 120000 });
+  await expect(page.getByTestId('verify')).toContainText('✓ Expected D major, detected D major', { timeout: 120000 });
   await page.getByTestId('play').click();
   await page.waitForTimeout(400);
   await page.getByTestId('play').click();
@@ -70,12 +74,27 @@ test('app loads, shows version, all tabs work, audio round-trip', async ({ page 
 
 test('works offline after first visit (service worker)', async ({ page, context }) => {
   await page.goto('./');
-  await page.evaluate(() => navigator.serviceWorker.ready);
+  const scope = await page.evaluate(async () => (await navigator.serviceWorker.ready).scope);
+  expect(scope).toBe(new URL('./', page.url()).href);
+  // manifest start_url/scope resolve to the app folder (e.g. /keyshift/ on Pages)
+  const m = await page.evaluate(async () => {
+    const href = (document.querySelector('link[rel=manifest]') as HTMLLinkElement).href;
+    const j = await (await fetch(href)).json();
+    return { start: new URL(j.start_url, href).href, scope: new URL(j.scope, href).href };
+  });
+  expect(m.start).toBe(scope);
+  expect(m.scope).toBe(scope);
   await page.reload();
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByTestId('version')).toContainText('Key Shift v');
   await page.getByTestId('tab-chords').click();
   await expect(page.getByTestId('transposed')).toContainText('Amazing grace');
+  // the audio engines (workers, Essentia, Rubber Band wasm) also come from the cache
+  await page.getByTestId('tab-audio').click();
+  await page.getByTestId('audio-file').setInputFiles(mp3Path);
+  await expect(page.getByTestId('render')).toBeEnabled({ timeout: 60000 });
+  await page.getByTestId('render').click();
+  await expect(page.getByTestId('verify')).toContainText('✓ Expected D major, detected D major', { timeout: 60000 });
   await context.setOffline(false);
 });

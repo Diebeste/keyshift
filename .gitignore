@@ -27,3 +27,13 @@ test-results
 playwright-report
 manual/*.mp3
 release/KeyShift/
+release/
+manual/
+# never commit secrets or local env
+.env
+.env.*
+*.pem
+*.key
+*.jks
+*.keystore
+.secrets/

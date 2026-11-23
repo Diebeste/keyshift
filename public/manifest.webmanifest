@@ -2,6 +2,7 @@
   "name": "Key Shift",
   "short_name": "Key Shift",
   "description": "Detect keys, transpose chords and pitch-shift audio. Local-first, works offline.",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

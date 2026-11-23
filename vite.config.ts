@@ -23,11 +23,13 @@ function serviceWorker(): Plugin {
   };
 }
 
-export default defineConfig({
-  base: './',
+// Default build uses relative URLs (works from any folder: the local zip). `--mode pages` targets
+// https://diebeste.github.io/keyshift/ with an absolute base.
+export default defineConfig(({ mode }) => ({
+  base: mode === 'pages' ? '/keyshift/' : './',
   plugins: [svelte(), serviceWorker()],
   define: { __APP_VERSION__: JSON.stringify(VERSION) },
   worker: { format: 'es' },
   build: { target: 'es2022', chunkSizeWarningLimit: 4000, assetsInlineLimit: 0 },
   optimizeDeps: { exclude: ['essentia.js'] },
-});
+}));

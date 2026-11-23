@@ -36,6 +36,16 @@ Safari on Mac → File → Add to Dock. Once loaded, it works offline.
 
 Opening `index.html` directly (file://) won't work: browsers block workers and wasm from file:// pages. Use a server script.
 
+## Hosting on GitHub Pages (https://diebeste.github.io/keyshift/)
+
+- `npm run build:pages` builds with base `/keyshift/` (plus `.nojekyll`). The default `npm run build` / `npm run release`
+  keep relative URLs so the local zip works from any folder.
+- `.github/workflows/pages.yml` (same setup as the worship app) runs the unit tests, builds, and publishes `dist/` to the
+  `gh-pages` branch on every push to `main`. In the repo settings, Pages → Source: *Deploy from a branch* → `gh-pages` / root.
+- Test the Pages build locally under the same path: `npm run build:pages && python3 scripts/serve-pages.py 8080`, then
+  `KS_BASE_URL=http://localhost:8080/keyshift/ npx playwright test`.
+- On a phone, open the Pages URL and use Share → Add to Home Screen (iOS) or Install app (Android).
+
 ## Develop
 
 ```bash

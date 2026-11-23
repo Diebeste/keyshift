@@ -1,0 +1,30 @@
+name: Deploy to GitHub Pages
+# Same setup as Diebeste/cupc-worship: build on push to main, publish dist/ to the gh-pages branch.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test            # theory + audio unit tests must pass before publishing
+      - run: npm run build:pages # base /keyshift/, writes dist/.nojekyll
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
+          user_name: Diebeste
+          user_email: 268620436+Diebeste@users.noreply.github.com

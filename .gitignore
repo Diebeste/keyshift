@@ -25,3 +25,5 @@ dist-ssr
 e2e/.fixtures
 test-results
 playwright-report
+manual/*.mp3
+release/KeyShift/

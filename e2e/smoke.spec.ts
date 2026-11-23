@@ -67,3 +67,15 @@ test('app loads, shows version, all tabs work, audio round-trip', async ({ page 
   expect(sw).toBe(true);
   expect(errors.filter((e) => !/favicon|AudioContext was not allowed/.test(e))).toEqual([]);
 });
+
+test('works offline after first visit (service worker)', async ({ page, context }) => {
+  await page.goto('./');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.getByTestId('version')).toContainText('Key Shift v');
+  await page.getByTestId('tab-chords').click();
+  await expect(page.getByTestId('transposed')).toContainText('Amazing grace');
+  await context.setOffline(false);
+});

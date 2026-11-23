@@ -28,7 +28,8 @@ input[type=file] { width: 100%; }
 .row { display: flex; gap: 10px; align-items: flex-end; margin: 8px 0; }
 .row.wrap { flex-wrap: wrap; align-items: center; }
 .field { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); flex: 1; min-width: 0; }
-.field.inline { display: flex; align-items: center; gap: 8px; flex: 0; }
+.field.inline { display: flex; align-items: center; gap: 8px; flex: none; }
+.field.inline select { min-width: 110px; }
 .check { display: flex; gap: 8px; align-items: center; }
 .shift { display: grid; grid-template-columns: auto 40px 1fr 40px 44px; gap: 8px; align-items: center; margin: 10px 0; }
 .shift .lbl { color: var(--muted); font-size: .85rem; }

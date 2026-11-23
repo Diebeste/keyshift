@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { detectAudioKey, type EssentiaLike } from '../audio/keyAudio';
+import { detectChords } from '../audio/chordDetect';
 
 let essentia: EssentiaLike | null = null;
 let essentiaError = '';
@@ -25,9 +26,13 @@ const ready = (async () => {
 })();
 
 self.onmessage = async (ev: MessageEvent) => {
-  const { id, mono, sampleRate, forceFallback } = ev.data as { id: number; mono: Float32Array; sampleRate: number; forceFallback?: boolean };
+  const { id, mono, sampleRate, forceFallback, type, key } = ev.data as { id: number; mono: Float32Array; sampleRate: number; forceFallback?: boolean; type?: string; key?: any };
   try {
     await ready;
+    if (type === 'chords') {
+      (self as any).postMessage({ id, ok: true, res: detectChords(mono, sampleRate, key ?? null, essentia) });
+      return;
+    }
     const res = detectAudioKey(mono, sampleRate, forceFallback ? null : essentia);
     (self as any).postMessage({ id, ok: true, res, essentiaError });
   } catch (e) {

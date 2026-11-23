@@ -14,9 +14,15 @@ Local-first: no server, no account, and **audio never leaves your device**. Work
 3. **Chords**: paste chords-over-lyrics or ChordPro (extensions like m7, maj7, sus4, add9, dim, aug, 7b9 and slash chords
    like D/F#). Original and transposed side by side with lyrics kept aligned, optional Nashville numbers, guitar or piano
    diagrams, Copy, Print (prints just the transposed sheet), Export .txt / .pro.
-4. **Audio**: upload a song, shift it n semitones with the tempo unchanged (Rubber Band, in a Web Worker), with live
+4. **Audio**: upload a song or a video (MP3, WAV, M4A/AAC, FLAC, OGG/Opus, AIFF, MP4, MOV, WebM, MKV), shift it n semitones with the tempo unchanged (Rubber Band, in a Web Worker), with live
    preview (SoundTouch AudioWorklet), waveform, play/pause, A/B original vs shifted and a progress bar. Export WAV or MP3,
-   and it re-detects the key of the result to confirm it moved by n.
+   (plus the original format's audio: FLAC, OGG, Opus, M4A, AIFF, WebM, MKA), and it re-detects the key of the result to confirm it moved by n.
+   Formats the browser can't decode go through ffmpeg.wasm (single-thread build, no special server headers needed),
+   which loads only when needed (~31 MB once, then cached for offline use).
+5. **Chords from audio** (rough): beat tracking (Essentia BeatTrackerMultiFeature), beat-synced chroma, matching against
+   maj, m, 7, maj7, m7, sus2, sus4, dim and aug, smoothed with a key-biased Viterbi pass. Shows a chord timeline under the
+   waveform that follows playback, a bar chart (downbeat guessed from chord changes), shows the shifted chords when you
+   play the render, lets you tap a chord to fix it, and exports ChordPro/.txt or opens it in the Chords tab.
 
 ## Run it (from the release zip)
 
@@ -63,6 +69,10 @@ encoders; shared by workers and tests), `src/workers` (Web Workers), `src/lib` (
 ## Notes and limits
 
 - The browser decodes audio at the device's audio rate (often 48 kHz), so exports use that rate.
-- Very long files (over ~10 minutes) need several hundred MB of memory while rendering.
+- Very long files (over ~10 minutes) need several hundred MB of memory while rendering. The app warns above 300 MB files or
+  ~450 MB of decoded audio, refuses files over 1.5 GB, and limits the ffmpeg.wasm converter to 700 MB inputs.
+- Chord detection is a starting point, not a transcription: piano/guitar songs with clear harmony work best; melody notes,
+  passing tones and missing bass can produce sus/7th chords that aren't really there. Tap to correct.
+- Test hooks: `?decoder=ffmpeg` forces the ffmpeg.wasm path; `?warnFileMB=N` lowers the large-file warning.
 - Detecting the relative major/minor instead of the exact key happens on ambiguous songs; the top 3 list shows both.
 - Licenses: see LICENSES.md (Essentia is AGPL, Rubber Band GPL: fine for personal use).

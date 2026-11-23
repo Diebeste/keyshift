@@ -12,7 +12,8 @@ function serviceWorker(): Plugin {
     name: 'keyshift-sw',
     apply: 'build',
     generateBundle(_, bundle) {
-      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map'));
+      // ffmpeg.wasm core (~31 MB) is lazy: cached at runtime on first use instead of precached
+      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && !/ffmpeg-core/.test(f));
       const publicFiles = ['manifest.webmanifest', 'favicon.svg', 'icon-192.png', 'icon-512.png'];
       const precache = ['./', ...[...files, ...publicFiles].map((f) => './' + f)];
       const src = readFileSync(new URL('./src/sw-template.js', import.meta.url), 'utf8')
@@ -31,5 +32,5 @@ export default defineConfig(({ mode }) => ({
   define: { __APP_VERSION__: JSON.stringify(VERSION) },
   worker: { format: 'es' },
   build: { target: 'es2022', chunkSizeWarningLimit: 4000, assetsInlineLimit: 0 },
-  optimizeDeps: { exclude: ['essentia.js'] },
+  optimizeDeps: { exclude: ['essentia.js', '@ffmpeg/ffmpeg', '@ffmpeg/util'] },
 }));

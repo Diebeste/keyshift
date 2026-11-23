@@ -2,6 +2,8 @@
 import KeyWorker from '../workers/key.worker.ts?worker';
 import ShiftWorker from '../workers/shift.worker.ts?worker';
 import type { AudioKeyResult } from '../audio/keyAudio';
+import type { ChordResult } from '../audio/chordDetect';
+import type { Key } from '../theory/keys';
 
 let keyW: Worker | null = null;
 let shiftW: Worker | null = null;
@@ -18,6 +20,20 @@ export function detectKeyInWorker(mono: Float32Array, sampleRate: number, forceF
     };
     keyW!.addEventListener('message', on);
     keyW!.postMessage({ id, mono: mono.slice(), sampleRate, forceFallback });
+  });
+}
+
+export function detectChordsInWorker(mono: Float32Array, sampleRate: number, key: Key | null): Promise<ChordResult> {
+  keyW ??= new KeyWorker();
+  const id = ++seq;
+  return new Promise((resolve, reject) => {
+    const on = (e: MessageEvent) => {
+      if (e.data.id !== id) return;
+      keyW!.removeEventListener('message', on);
+      e.data.ok ? resolve(e.data.res) : reject(new Error(e.data.error));
+    };
+    keyW!.addEventListener('message', on);
+    keyW!.postMessage({ id, type: 'chords', mono: mono.slice(), sampleRate, key });
   });
 }
 

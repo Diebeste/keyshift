@@ -75,3 +75,16 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; margin-top: 
   .panes { display: block; } .card { border: 0; background: none; padding: 0; }
   .sheet .chord { color: #000; } .sheet .directive, .sheet .text { color: #000; }
 }
+.warn { color: var(--accent2); }
+.ctl { position: relative; overflow-x: auto; margin-top: 8px; background: #12141d; border-radius: 10px; scrollbar-width: thin; }
+.ctl-inner { position: relative; height: 40px; min-width: 100%; }
+.ctl .seg { position: absolute; top: 4px; height: 32px; min-height: 0; padding: 0 4px; border-radius: 6px; font-size: .8rem; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: clip; background: #2a2f45; border: 1px solid #12141d; color: var(--text); text-align: left; }
+.ctl .seg.cur { background: var(--accent2); color: #0d0f17; }
+.ctl .seg.sel { outline: 2px solid var(--accent); }
+.ctl .seg.nc { opacity: .5; }
+.ctl .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; }
+.nowchord { font-size: 1.4rem; font-weight: 800; color: var(--accent2); margin-left: auto; }
+.nowchord small { font-size: .9rem; color: var(--muted); font-weight: 600; }
+.chart { margin: 8px 0; overflow-x: auto; }
+.edit input { width: 110px; }
+.meter { margin-left: 8px; padding: 2px 6px; font-size: .8rem; }

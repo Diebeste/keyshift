@@ -44,7 +44,7 @@ test('app loads, shows version, all tabs work, audio round-trip', async ({ page 
   await expect(page.getByTestId('nashville-pane')).toContainText('5/7');
   const dl = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export .pro' }).click();
-  expect((await dl).suggestedFilename()).toMatch(/\(A\)\.pro$/);
+  expect((await dl).suggestedFilename().replace(/_/g, ' ')).toMatch(/\(A\)\.pro$/);
   await shot('3-chords');
 
   // Audio tab: render +2, verify key moved, export MP3
@@ -60,7 +60,7 @@ test('app loads, shows version, all tabs work, audio round-trip', async ({ page 
   const mp3 = page.waitForEvent('download');
   await page.getByTestId('export-mp3').click();
   const d = await mp3;
-  expect(d.suggestedFilename()).toBe('c-major (+2).mp3');
+  expect(d.suggestedFilename().replace(/_/g, ' ')).toBe('c-major (+2).mp3');
   const p = `${FIX}/${info.project.name}-out.mp3`;
   await d.saveAs(p);
   expect(statSync(p).size).toBeGreaterThan(20000);

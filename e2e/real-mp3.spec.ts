@@ -19,6 +19,10 @@ test('real MP3: detect key, render +2, verify, export MP3', async ({ page }, inf
   const verdict = await page.getByTestId('verify').innerText();
   const before = await page.locator('[data-testid=key-results]').nth(0).innerText();
   const after = await page.locator('[data-testid=key-results]').nth(1).innerText();
+  await expect(page.getByTestId('chart')).toBeVisible({ timeout: 120000 });
+  console.log('CHART (shifted +2):\n' + (await page.getByTestId('chart').innerText()).split('\n').slice(0, 8).join('\n'));
+  await page.getByTestId('meter').selectOption('3');
+  console.log('CHART 3/4 (shifted +2):\n' + (await page.getByTestId('chart').innerText()).split('\n').slice(0, 6).join('\n'));
   console.log(`RENDER+VERIFY ${secs.toFixed(1)}s\nBEFORE:\n${before}\nAFTER:\n${after}\nVERDICT: ${verdict}`);
   await page.screenshot({ path: 'screenshots/real-mp3-gymnopedie.png', fullPage: true });
   const dl = page.waitForEvent('download');

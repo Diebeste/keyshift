@@ -89,3 +89,12 @@ describe('chord detection from audio (synthetic, known chords)', () => {
     expect(QUALITIES).toHaveLength(9);
   });
 });
+
+describe('chart downbeat guess', () => {
+  it('puts chord changes on beat 1 even when the first tracked beat is a pickup', () => {
+    const beats = Array.from({ length: 17 }, (_, i) => 0.5 + i * 0.5); // first beat is the 2nd beat of bar 1
+    const segs = [{ start: 0, end: 1.5, label: 'C' }, { start: 1.5, end: 3.5, label: 'Am' }, { start: 3.5, end: 5.5, label: 'F' }, { start: 5.5, end: 9, label: 'G' }];
+    const lines = chartLines(segs, beats);
+    expect(lines.join(' ').replace(/\s+/g, ' ')).toBe('| C | Am | F | G | | G |');
+  });
+});

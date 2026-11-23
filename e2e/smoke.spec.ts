@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+const PKG_VERSION = JSON.parse(readFileSync('package.json', 'utf8')).version as string;
 import { writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { renderProgression, C_MAJOR_PROG } from '../src/audio/synth';
 import { encodeWav, encodeMp3 } from '../src/audio/encode';
@@ -19,7 +21,7 @@ test('app loads, shows version, all tabs work, audio round-trip', async ({ page 
   const shot = (n: string) => page.screenshot({ path: `screenshots/${info.project.name}-${n}.png`, fullPage: true });
 
   await page.goto('./');
-  await expect(page.getByTestId('version')).toContainText('Key Shift v1.0.0');
+  await expect(page.getByTestId('version')).toContainText(`Key Shift v${PKG_VERSION}+`);
   // Key tab: text detection of the sample sheet (G major)
   await expect(page.getByTestId('key-results').first().locator('li').first()).toContainText('G major');
   // Audio key detection

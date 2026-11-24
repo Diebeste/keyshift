@@ -7,7 +7,7 @@ rm -rf release/KeyShift release/KeyShift.zip
 mkdir -p release/KeyShift
 cp -r dist/. release/KeyShift/
 cp serve/serve.py serve/serve.mjs serve/serve.command serve/serve.bat serve/serve.ps1 release/KeyShift/
-cp README.md LICENSES.md release/KeyShift/
+cp README.md LICENSES.md STATUS.md release/KeyShift/
 chmod +x release/KeyShift/serve.command release/KeyShift/serve.py
 python3 - <<'PY'
 import os, zipfile

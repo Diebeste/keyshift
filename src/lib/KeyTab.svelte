@@ -10,22 +10,35 @@
   let audioRes = $state<KeyScore[] | null>(null);
   let engine = $state('');
   let status = $state('');
+  let error = $state('');
+  let warnings = $state<string[]>([]);
   let fileName = $state('');
+  let gen = 0;
   const textRes = $derived(detectKeyFromChords(sheetChords(parseSheet(app.sheet))));
   const chordCount = $derived(sheetChords(parseSheet(app.sheet)).length);
 
   async function onFile(e: Event) {
-    const f = (e.currentTarget as HTMLInputElement).files?.[0];
+    const input = e.currentTarget as HTMLInputElement;
+    const f = input.files?.[0];
     if (!f) return;
-    fileName = f.name; audioRes = null; status = 'Decoding…';
+    input.value = '';
+    const my = ++gen;
+    fileName = f.name; audioRes = null; error = ''; warnings = []; status = 'Decoding…';
     try {
-      const buf = (await decodeAny(f, (m) => (status = m))).buffer;
-      status = `Analysing ${buf.duration.toFixed(1)} s…`;
-      const r = await detectKeyInWorker(monoOf(buf), buf.sampleRate);
+      const decoded = await decodeAny(f, (m) => { if (my === gen) status = m; });
+      if (my !== gen) return;
+      warnings = decoded.warnings;
+      status = `Analysing ${decoded.buffer.duration.toFixed(1)} s…`;
+      const r = await detectKeyInWorker(monoOf(decoded.buffer), decoded.buffer.sampleRate);
+      if (my !== gen) return;
       audioRes = r.top;
       engine = r.engine === 'essentia' ? 'Essentia.js KeyExtractor (wasm)' : 'Meyda chroma + Krumhansl/Temperley profiles (fallback)';
       status = '';
-    } catch (err) { status = 'Could not read this file: ' + err; }
+    } catch (err) {
+      if (my !== gen) return;
+      error = String(err).replace(/^Error: /, '');
+      status = '';
+    }
   }
   const use = (k: Key) => { app.fromKey = k; };
 </script>
@@ -35,7 +48,9 @@
   <p class="muted">Audio or video files (MP3, WAV, M4A, FLAC, OGG, AIFF, MP4, MOV, WebM, MKV). Analysed on this device; nothing is uploaded.</p>
   <input type="file" accept={ACCEPT} onchange={onFile} data-testid="key-file" />
   {#if fileName}<p class="muted">{fileName}</p>{/if}
+  {#each warnings as w}<p class="warn" data-testid="warning">{w}</p>{/each}
   {#if status}<p class="status">{status}</p>{/if}
+  {#if error}<p class="error" data-testid="error">{error}</p>{/if}
   {#if audioRes}
     <KeyResults results={audioRes} onpick={use} />
     <p class="muted small">Engine: {engine}</p>

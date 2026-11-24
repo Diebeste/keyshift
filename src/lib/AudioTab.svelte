@@ -4,7 +4,8 @@
   import KeyResults from './KeyResults.svelte';
   import ChordTimeline from './ChordTimeline.svelte';
   import { channelsOf, monoOf, bufferFrom, downloadBytes, downloadText, peaks } from './audio';
-  import { decodeAny, ACCEPT, isOriginalExportable } from './decode';
+  import { decodeAny, ACCEPT } from './decode';
+  import { originalFormat } from './formats';
   import { detectKeyInWorker, shiftInWorker, encodeInWorker, detectChordsInWorker } from './workers';
   import { Player } from './player';
   import { app } from './state.svelte';
@@ -15,7 +16,6 @@
   import { chartLines, chartChordPro } from '../audio/chordChart';
   import type { ChordResult } from '../audio/chordDetect';
 
-  let file: File | null = null;
   let fileName = $state('');
   let via = $state('');
   let warnings = $state<string[]>([]);
@@ -42,7 +42,12 @@
   const player = new Player();
   player.onend = () => { playing = false; pos = 0; };
   let raf = 0;
+  let gen = 0;
+  let renderGen = 0;
+  let chordGen = 0;
+  let peakCache: { buf: AudioBuffer; buckets: number; pk: Float32Array } | null = null;
   const tick = () => { pos = player.position; if (player.playing) raf = requestAnimationFrame(tick); };
+  const startTick = () => { cancelAnimationFrame(raf); tick(); };
 
   const stale = $derived(rendered !== null && renderedShift !== shift);
   const expected = $derived(keyBefore ? transposeKey(keyBefore[0].key, renderedShift) : null);
@@ -53,61 +58,88 @@
   // chords shown follow what you hear: side B shows the shifted chords
   const dispShift = $derived(side === 'B' ? (rendered && !stale ? renderedShift : shift) : 0);
   const dispKey = $derived<Key | null>(songKey ? transposeKey(songKey, dispShift) : null);
+  const ofmt = $derived(originalFormat(fileName));
+  const meterN = $derived(Number(meter) || 4);
   const dispSegs = $derived(chords ? chords.segments.map((s) => ({ ...s, label: s.label === 'N.C.' ? s.label : transposeChordString(s.label, dispShift, dispKey ?? dispShift < 0) })) : []);
-  const chart = $derived(chords ? chartLines(dispSegs, chords.beats, meter) : []);
+  const chart = $derived(chords ? chartLines(dispSegs, chords.beats, meterN) : []);
   const nowChord = $derived(dispSegs.find((s) => pos >= s.start && pos < s.end)?.label ?? '');
   const nextChord = $derived(dispSegs.find((s) => s.start > pos)?.label ?? '');
   const baseName = $derived(fileName.replace(/\.[^.]+$/, '') || 'audio');
-  const origFmt = $derived(isOriginalExportable(fileName) ? (/\.([a-z0-9]+)$/i.exec(fileName)?.[1] ?? '').toUpperCase() : '');
 
   async function onFile(e: Event) {
-    const f = (e.currentTarget as HTMLInputElement).files?.[0];
+    const input = e.currentTarget as HTMLInputElement;
+    const f = input.files?.[0];
     if (!f) return;
-    player.stop(false); playing = false; pos = 0;
-    error = ''; warnings = []; rendered = null; keyBefore = null; keyAfter = null; chords = null; selected = -1;
-    file = f; fileName = f.name; progress = 0;
+    input.value = '';
+    const my = ++gen; renderGen++; chordGen++;
+    player.cancel(); playing = false; pos = 0; cancelAnimationFrame(raf);
+    error = ''; warnings = []; rendered = null; keyBefore = null; keyAfter = null; chords = null; selected = -1; chordBusy = false; busy = '';
+    fileName = f.name; progress = 0; original = null;
     try {
-      const d = await decodeAny(f, (msg, p) => { busy = msg; if (p !== undefined) progress = p; });
+      const d = await decodeAny(f, (msg, p) => { if (my === gen) { busy = msg; if (p !== undefined) progress = p; } });
+      if (my !== gen) return;
       original = d.buffer; via = d.via === 'native' ? 'browser decoder' : 'ffmpeg.wasm'; warnings = d.warnings;
       busy = 'Detecting key…';
       const r = await detectKeyInWorker(monoOf(original), original.sampleRate);
+      if (my !== gen) return;
       keyBefore = r.top;
       engine = r.engine === 'essentia' ? 'Essentia.js' : 'Meyda + profiles (fallback)';
       busy = '';
-      void runChords();
-    } catch (err) { error = String(err).replace(/^Error: /, ''); original = null; busy = ''; }
+      void runChords(my);
+    } catch (err) {
+      if (my !== gen) return;
+      error = String(err).replace(/^Error: /, ''); original = null; busy = '';
+    }
   }
 
-  async function runChords() {
+  async function runChords(expectedGen = gen) {
     if (!original) return;
+    const myChord = ++chordGen;
     chordBusy = true;
-    try { chords = await detectChordsInWorker(monoOf(original), original.sampleRate, songKey ? { ...songKey } : null); }
-    catch (err) { error = 'Chord detection failed: ' + err; }
-    chordBusy = false;
+    try {
+      const res = await detectChordsInWorker(monoOf(original), original.sampleRate, songKey ? { ...songKey } : null);
+      if (expectedGen !== gen || myChord !== chordGen) return;
+      chords = res;
+    } catch (err) {
+      if (expectedGen !== gen || myChord !== chordGen) return;
+      error = 'Chord detection failed: ' + err;
+    } finally {
+      if (myChord === chordGen) chordBusy = false;
+    }
   }
 
   async function render() {
     if (!original) return;
+    const myFile = gen;
+    const my = ++renderGen;
     error = ''; progress = 0; busy = 'Rendering with Rubber Band…'; keyAfter = null;
     const wasPlaying = player.playing; player.stop(); playing = false;
     try {
-      const out = await shiftInWorker(channelsOf(original), original.sampleRate, shift, (p) => (progress = p));
+      const out = await shiftInWorker(channelsOf(original), original.sampleRate, shift, (p) => { if (my === renderGen && myFile === gen) progress = p; });
+      if (my !== renderGen || myFile !== gen) return;
       rendered = bufferFrom(out, original.sampleRate);
       renderedShift = shift;
       side = 'B';
       busy = 'Verifying key…';
       keyAfter = (await detectKeyInWorker(monoOf(rendered), rendered.sampleRate)).top;
-    } catch (err) { error = /memory|allocation|RangeError/i.test(String(err)) ? 'Ran out of memory while rendering. Trim the file or try on a computer.' : 'Render failed: ' + err; }
+      if (my !== renderGen || myFile !== gen) return;
+    } catch (err) {
+      if (my !== renderGen || myFile !== gen) return;
+      error = /memory|allocation|RangeError/i.test(String(err)) ? 'Ran out of memory while rendering. Trim the file or try on a computer.' : 'Render failed: ' + err;
+    }
+    if (my !== renderGen || myFile !== gen) return;
     busy = '';
     if (wasPlaying) toggle();
   }
 
   async function toggle() {
     if (!original) return;
-    if (player.playing) { player.stop(); playing = false; return; }
+    if (player.playing) { player.stop(); playing = false; cancelAnimationFrame(raf); return; }
     const useRendered = side === 'B' && rendered && !stale;
+    const playGen = gen;
     await player.play(useRendered ? rendered! : original, pos, side === 'B' && !useRendered ? shift : null);
-    playing = true; tick();
+    if (playGen !== gen) return;
+    playing = true; startTick();
   }
   async function setSide(s: 'A' | 'B') {
     side = s;
@@ -138,7 +170,7 @@
   const proText = () => chartChordPro(baseName + (dispShift ? ` (${dispShift > 0 ? '+' : ''}${dispShift})` : ''), dispKey ? keyName(dispKey, true) : null, chords?.bpm ?? 0, chart);
   function sendToChords() {
     if (!chords) return;
-    app.sheet = chartChordPro(baseName, songKey ? keyName(songKey, true) : null, chords.bpm, chartLines(chords.segments, chords.beats, meter));
+    app.sheet = chartChordPro(baseName, songKey ? keyName(songKey, true) : null, chords.bpm, chartLines(chords.segments, chords.beats, meterN));
     if (songKey) app.fromKey = songKey;
     app.shift = side === 'B' ? dispShift : 0;
     app.tab = 'chords';
@@ -146,7 +178,8 @@
 
   async function exportAs(fmt: 'wav' | 'mp3' | 'orig') {
     if (!rendered) return;
-    busy = `Encoding ${fmt === 'orig' ? origFmt : fmt.toUpperCase()}…`; progress = 0;
+    const my = gen;
+    busy = `Encoding ${fmt === 'orig' ? (ofmt?.label ?? 'audio') : fmt.toUpperCase()}…`; progress = 0;
     const suffix = `(${renderedShift > 0 ? '+' : ''}${renderedShift})`;
     try {
       if (fmt === 'orig') {
@@ -162,8 +195,8 @@
         const bytes = await encodeInWorker(channelsOf(rendered), rendered.sampleRate, fmt, (p) => (progress = p));
         downloadBytes(bytes, `${baseName} ${suffix}.${fmt}`, fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav');
       }
-    } catch (err) { error = 'Export failed: ' + err; }
-    busy = '';
+    } catch (err) { if (my === gen) error = 'Export failed: ' + err; }
+    if (my === gen) busy = '';
   }
 
   $effect(() => {
@@ -174,7 +207,9 @@
     canvas.width = w * dpr; canvas.height = h * dpr;
     const g = canvas.getContext('2d')!;
     g.scale(dpr, dpr);
-    const pk = peaks(b, Math.max(50, Math.floor(w)));
+    const buckets = Math.max(50, Math.floor(w));
+    if (!peakCache || peakCache.buf !== b || peakCache.buckets !== buckets) peakCache = { buf: b, buckets, pk: peaks(b, buckets) };
+    const pk = peakCache.pk;
     const played = (pos / b.duration) * w;
     for (let i = 0; i < pk.length; i++) {
       const x = (i / pk.length) * w, hh = Math.max(1, pk[i] * h * 0.95);
@@ -183,7 +218,7 @@
     }
     g.fillStyle = '#fff'; g.fillRect(played, 0, 1.5, h);
   });
-  onDestroy(() => { cancelAnimationFrame(raf); player.stop(); });
+  onDestroy(() => { cancelAnimationFrame(raf); player.cancel(); });
   const fmt = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 </script>
 
@@ -229,7 +264,7 @@
       <button class="primary" onclick={render} disabled={!!busy || shift === 0} data-testid="render">Render {shift > 0 ? '+' : ''}{shift}</button>
       <button onclick={() => exportAs('wav')} disabled={!rendered || stale || !!busy} data-testid="export-wav">Export WAV</button>
       <button onclick={() => exportAs('mp3')} disabled={!rendered || stale || !!busy} data-testid="export-mp3">Export MP3</button>
-      {#if origFmt}<button onclick={() => exportAs('orig')} disabled={!rendered || stale || !!busy} data-testid="export-orig">Export {origFmt === 'MP4' || origFmt === 'MOV' || origFmt === 'AAC' ? 'M4A' : origFmt === 'MKV' ? 'MKA' : origFmt === 'AIF' ? 'AIFF' : origFmt === 'OGA' ? 'OGG' : origFmt} (audio)</button>{/if}
+      {#if ofmt}<button onclick={() => exportAs('orig')} disabled={!rendered || stale || !!busy} data-testid="export-orig">Export {ofmt.label} (audio)</button>{/if}
     </div>
     {#if busy && original}
       <p class="status">{busy}</p>
@@ -257,7 +292,7 @@
         <button onclick={sendToChords} data-testid="send-chords">Open in Chords tab</button>
         <button onclick={() => downloadText(proText(), `${baseName} chords${dispShift ? ` (${dispShift > 0 ? '+' : ''}${dispShift})` : ''}.pro`)} data-testid="chords-pro">Export .pro</button>
         <button onclick={() => downloadText(toText(parseSheet(proText())), `${baseName} chords${dispShift ? ` (${dispShift > 0 ? '+' : ''}${dispShift})` : ''}.txt`)}>Export .txt</button>
-        <button onclick={runChords} disabled={chordBusy}>Re-detect</button>
+        <button onclick={() => runChords()} disabled={chordBusy}>Re-detect</button>
       </div>
     </section>
   {/if}

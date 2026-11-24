@@ -49,6 +49,64 @@ export function trackBeats(mono: Float32Array, sampleRate: number, essentia?: Es
   return { beats, source: 'grid' };
 }
 
+function median(xs: number[]): number {
+  const a = xs.slice().sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m]! : (a[m - 1]! + a[m]!) / 2;
+}
+
+/**
+ * If a beat tracker accumulates phase error later in the song, subtract that
+ * linear drift. Local timing (rubato, fills) is kept. Steady, undrifted grids
+ * are left unchanged.
+ */
+export function stabilizeBeats(beats: number[], duration: number): number[] {
+  const clean = beats.filter((b) => b >= 0 && b <= duration).sort((a, b) => a - b);
+  if (clean.length < 8) return clean;
+  const iois = clean.slice(1).map((b, i) => b - clean[i]!).filter((d) => d > 0.2 && d < 2);
+  if (iois.length < 6) return clean;
+  const period = median(iois);
+  if (period < 0.25 || period > 1.5) return clean;
+
+  const earlyN = Math.max(8, Math.min(clean.length, Math.floor(clean.length * 0.3)));
+  const early = clean.slice(0, earlyN);
+  const earlyIoi = early.slice(1).map((b, i) => b - early[i]!).filter((d) => d > 0.2 && d < 2);
+  if (earlyIoi.length < 4) return clean;
+  if (median(earlyIoi.map((d) => Math.abs(d - period))) > period * 0.1) return clean;
+
+  let bestT0 = early[0]!, bestErr = Infinity;
+  for (let s = 0; s <= 40; s++) {
+    const t0 = early[0]! - period / 2 + (s / 40) * period;
+    let err = 0;
+    for (const b of early) {
+      const k = Math.round((b - t0) / period);
+      const d = b - (t0 + k * period);
+      err += d * d;
+    }
+    if (err < bestErr) { bestErr = err; bestT0 = t0; }
+  }
+
+  const idx = clean.map((b) => Math.round((b - bestT0) / period));
+  const resid = clean.map((b, i) => b - (bestT0 + idx[i]! * period));
+  const n = resid.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (let i = 0; i < n; i++) {
+    const x = idx[i]!, y = resid[i]!;
+    sumX += x; sumY += y; sumXY += x * y; sumXX += x * x;
+  }
+  const denom = n * sumXX - sumX * sumX;
+  if (Math.abs(denom) < 1e-9) return clean;
+  const slope = (n * sumXY - sumX * sumY) / denom; // seconds of error per beat
+  const endDrift = Math.abs(slope * (idx[n - 1]! - idx[0]!));
+  if (endDrift < period * 0.12) return clean;
+
+  const out = clean.map((b, i) => Math.min(duration, Math.max(0, b - slope * idx[i]!)));
+  for (let i = 1; i < out.length; i++) {
+    if (out[i]! <= out[i - 1]!) out[i] = out[i - 1]! + period * 0.25;
+  }
+  return out.filter((t, i, a) => t >= 0 && t <= duration && (i === 0 || t > a[i - 1]! + 0.05));
+}
+
 /** Frame-wise chroma (12 bins, C = 0) at ~11 kHz. */
 export function chromaFrames(mono: Float32Array, sampleRate: number): { hopSec: number; frames: number[][]; energy: number[] } {
   const factor = Math.max(1, Math.floor(sampleRate / 11025));
@@ -139,7 +197,8 @@ export function decodeChords(beatChroma: number[][], silent: boolean[], key: Key
 /** Full pipeline. */
 export function detectChords(mono: Float32Array, sampleRate: number, key: Key | null, essentia?: EssentiaLike | null, beatsIn?: number[]): ChordResult {
   const dur = mono.length / sampleRate;
-  const bt = beatsIn ? { beats: beatsIn, source: 'essentia' as const } : trackBeats(mono, sampleRate, essentia);
+  const raw = beatsIn ? { beats: beatsIn, source: 'essentia' as const } : trackBeats(mono, sampleRate, essentia);
+  const bt = { beats: stabilizeBeats(raw.beats, dur), source: raw.source };
   // intervals: [0, b0), [b0, b1), ..., [bn, dur)
   const edges = [0, ...bt.beats.filter((b) => b > 0.05 && b < dur - 0.05), dur];
   const { hopSec, frames, energy } = chromaFrames(mono, sampleRate);

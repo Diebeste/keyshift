@@ -100,3 +100,13 @@ test('works offline after first visit (service worker)', async ({ page, context 
   await expect(page.getByTestId('verify')).toContainText('✓ Expected D major, detected D major', { timeout: 60000 });
   await context.setOffline(false);
 });
+
+test('empty audio files show an error and do not hang', async ({ page }) => {
+  const empty = `${FIX}/empty.mp3`;
+  writeFileSync(empty, '');
+  await page.goto('./');
+  await page.getByTestId('tab-audio').click();
+  await page.getByTestId('audio-file').setInputFiles(empty);
+  await expect(page.getByTestId('error')).toContainText(/empty/i, { timeout: 15000 });
+  await expect(page.getByTestId('render')).toHaveCount(0);
+});

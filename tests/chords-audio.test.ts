@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { detectChords, QUALITIES } from '../src/audio/chordDetect';
+import { detectChords, QUALITIES, stabilizeBeats } from '../src/audio/chordDetect';
 import { chartLines } from '../src/audio/chordChart';
 import { renderStabs, voicing } from '../src/audio/synth';
 import { shiftWithRubberBand } from '../src/audio/rubberband';
@@ -96,5 +96,47 @@ describe('chart downbeat guess', () => {
     const segs = [{ start: 0, end: 1.5, label: 'C' }, { start: 1.5, end: 3.5, label: 'Am' }, { start: 3.5, end: 5.5, label: 'F' }, { start: 5.5, end: 9, label: 'G' }];
     const lines = chartLines(segs, beats);
     expect(lines.join(' ').replace(/\s+/g, ' ')).toBe('| C | Am | F | G | | G |');
+  });
+});
+
+describe('beat-grid drift correction', () => {
+  const nearest = (beats: number[], t: number) => beats.reduce((b, x) => Math.abs(x - t) < Math.abs(b - t) ? x : b);
+
+  it('leaves a steady, undrifted grid alone', () => {
+    const period = 0.5, dur = 40;
+    const beats = Array.from({ length: Math.floor(dur / period) }, (_, i) => i * period);
+    expect(stabilizeBeats(beats, dur)).toEqual(beats);
+  });
+
+  it('does not flatten late beats when early tempo is unstable (rubato / fill, not tracker drift)', () => {
+    // wildly uneven early intervals: algorithm should refuse to assume a pulse
+    const beats = [0, 0.3, 0.9, 1.1, 1.9, 2.2, 3.0, 3.2, 4.1, 4.4, 5.3, 5.5, 6.6, 6.8, 8];
+    expect(stabilizeBeats(beats, 8)).toEqual(beats);
+  });
+
+  it('pulls later beats back when the tracker accumulates phase error', () => {
+    const period = 0.5, dur = 40;
+    // quadratic drift: early residuals stay small, late beats lag by a large fraction of a beat
+    const drifted = Array.from({ length: Math.floor(dur / period) }, (_, i) => i * period + 0.00025 * i * i);
+    const iLate = Math.round((dur * 0.85) / period);
+    const truth = iLate * period;
+    // compare the same beat index, not "nearest time" (a stretched grid still has some tick near t)
+    expect(Math.abs(drifted[iLate]! - truth)).toBeGreaterThan(0.8);
+    const fixed = stabilizeBeats(drifted, dur);
+    expect(Math.abs(nearest(fixed, truth) - truth)).toBeLessThan(0.12);
+    // early beats stay close to the pulse (we only subtract the trend)
+    expect(Math.abs(nearest(fixed, 4 * period) - 4 * period)).toBeLessThan(0.05);
+  });
+
+  it('recovers later-chord accuracy when given a drifted beat grid', () => {
+    const names = TRIADS;
+    const x = render(names);
+    const key = detectAudioKey(x, SR, ess).top[0].key;
+    const dur = x.length / SR;
+    const period = 60 / BPM;
+    const drifted = Array.from({ length: Math.max(8, Math.floor(dur / period)) }, (_, i) => i * period + 0.0003 * i * i).filter((t) => t < dur);
+    const raw = detectChords(x, SR, key, null, drifted);
+    // detectChords stabilizes internally; accuracy should still meet the triad bar
+    expect(perBeatAccuracy(raw, names)).toBeGreaterThanOrEqual(0.8);
   });
 });

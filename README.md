@@ -1,7 +1,7 @@
 # Key Shift
 
 Key detection, transposing, chord sheets and audio pitch-shifting in one installable web app (PWA).
-Local-first: no server, no account, and **audio never leaves your device**. Works offline after the first visit.
+Local-first: no server, no account, and **audio never leaves your device**. Works offline after the first visit. See STATUS.md for the current version, known limits, and what this release fixed.
 
 ## Features
 
@@ -19,10 +19,11 @@ Local-first: no server, no account, and **audio never leaves your device**. Work
    (plus the original format's audio: FLAC, OGG, Opus, M4A, AIFF, WebM, MKA), and it re-detects the key of the result to confirm it moved by n.
    Formats the browser can't decode go through ffmpeg.wasm (single-thread build, no special server headers needed),
    which loads only when needed (~31 MB once, then cached for offline use).
-5. **Chords from audio** (rough): beat tracking (Essentia BeatTrackerMultiFeature), beat-synced chroma, matching against
-   maj, m, 7, maj7, m7, sus2, sus4, dim and aug, smoothed with a key-biased Viterbi pass. Shows a chord timeline under the
-   waveform that follows playback, a bar chart (downbeat guessed from chord changes), shows the shifted chords when you
-   play the render, lets you tap a chord to fix it, and exports ChordPro/.txt or opens it in the Chords tab.
+5. **Chords from audio** (rough): beat tracking (Essentia BeatTrackerMultiFeature), a pass that subtracts late beat-tracker
+   drift while keeping local timing, beat-synced chroma, matching against maj, m, 7, maj7, m7, sus2, sus4, dim and aug,
+   smoothed with a key-biased Viterbi pass. Shows a chord timeline under the waveform that follows playback, a bar chart
+   (downbeat guessed from chord changes), shows the shifted chords when you play the render, lets you tap a chord to fix
+   it, and exports ChordPro/.txt or opens it in the Chords tab.
 
 ## Run it (from the release zip)
 

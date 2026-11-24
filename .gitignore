@@ -37,3 +37,7 @@ manual/
 *.jks
 *.keystore
 .secrets/
+
+# Python leftovers from the local zip server
+__pycache__/
+*.pyc
